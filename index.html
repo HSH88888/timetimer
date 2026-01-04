@@ -1,0 +1,866 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mobile Optimized Time Timer (Final)</title>
+    <style>
+        /* 초기화 및 폰트 */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        :root {
+            --primary-color: #f0f0f0;
+            --secondary-color: #333;
+            --clock-bg: #f0f0f0;
+            --hand-color: #333;
+            --second-hand-color: #e74c3c;
+            --timer-red: #e74c3c;
+            --shadow-light: -8px -8px 15px rgba(255, 255, 255, 1);
+            --shadow-dark: 8px 8px 15px rgba(0, 0, 0, 0.1);
+            --active-shadow: inset 5px 5px 10px rgba(0,0,0,0.1), inset -5px -5px 10px rgba(255,255,255,0.5);
+            --active-shadow-dark: inset 5px 5px 10px rgba(0,0,0,0.3), inset -5px -5px 10px rgba(255,255,255,0.05);
+            --tick-color: #ccc;
+        }
+
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: var(--primary-color);
+            transition: 0.5s;
+            overflow: hidden;
+        }
+
+        body.dark {
+            --primary-color: #2c2c2c;
+            --secondary-color: #fff;
+            --clock-bg: #2c2c2c;
+            --hand-color: #fff;
+            --tick-color: #555;
+            --shadow-light: -5px -5px 10px rgba(255, 255, 255, 0.05);
+            --shadow-dark: 5px 5px 15px rgba(0, 0, 0, 0.5);
+        }
+
+        .layout-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            max-width: 900px;
+        }
+
+        .center-column {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+            z-index: 10;
+        }
+
+        /* 시계 본체 */
+        .clock {
+            position: relative;
+            width: 350px;
+            height: 350px;
+            background: var(--clock-bg);
+            border-radius: 50%;
+            box-shadow: var(--shadow-light), var(--shadow-dark);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            transition: 0.3s;
+        }
+
+        .clock label {
+            position: absolute;
+            inset: 35px;
+            text-align: center;
+            transform: rotate(calc(30deg * var(--i)));
+            z-index: 20;
+        }
+
+        .clock label span {
+            display: inline-block;
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: var(--secondary-color);
+            transform: rotate(calc(-30deg * var(--i)));
+            transition: opacity 0.3s;
+            width: 40px;
+        }
+
+        .ticks {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            z-index: 10;
+            pointer-events: none;
+        }
+
+        .tick {
+            position: absolute;
+            width: 2px;
+            height: 10px;
+            background: var(--tick-color);
+            left: 50%;
+            top: 10px;
+            transform-origin: 50% 165px;
+            transform: translateX(-50%);
+        }
+
+        .tick.major {
+            width: 4px;
+            height: 15px;
+            background: var(--secondary-color);
+        }
+
+        .indicator {
+            position: absolute;
+            width: 15px;
+            height: 15px;
+            background: var(--secondary-color);
+            border-radius: 50%;
+            z-index: 25;
+            display: flex;
+            justify-content: center;
+        }
+
+        .hand {
+            position: absolute;
+            bottom: 50%;
+            transform-origin: bottom;
+            border-radius: 4px;
+            background: var(--hand-color);
+            transition: opacity 0.3s;
+        }
+
+        .hour { width: 8px; height: 70px; z-index: 22; }
+        .minute { width: 5px; height: 90px; z-index: 23; }
+        .second { width: 2px; height: 110px; background: var(--second-hand-color); z-index: 24; }
+
+        .second::after {
+            content: '';
+            position: absolute;
+            top: -5px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 10px;
+            height: 10px;
+            background: var(--second-hand-color);
+            border-radius: 50%;
+        }
+
+        .timer-disk {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: conic-gradient(var(--timer-red) 0deg, transparent 0deg);
+            z-index: 15;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+
+        .clock.timer-mode .hand { opacity: 0; }
+        .clock.timer-mode .timer-disk { opacity: 1; }
+
+        .clock.timer-mode .clock-labels span { opacity: 1; }
+        .clock.timer-mode.zero-time .clock-labels span { opacity: 0.3; }
+
+        .mode-group {
+            display: flex;
+            gap: 20px;
+            margin-top: 10px;
+        }
+
+        .btn {
+            padding: 12px 25px;
+            border-radius: 20px;
+            background: var(--clock-bg);
+            color: var(--secondary-color);
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: var(--shadow-light), var(--shadow-dark);
+            transition: 0.2s;
+            border: none;
+            font-size: 1rem;
+            text-align: center;
+            user-select: none;
+            touch-action: manipulation;
+        }
+
+        .btn:active, .btn.active-state {
+            box-shadow: var(--active-shadow);
+            transform: scale(0.98);
+            color: var(--timer-red);
+        }
+
+        .btn.sound-off {
+            opacity: 0.6;
+            color: #999;
+        }
+
+        body.dark .btn:active, body.dark .btn.active-state {
+            box-shadow: var(--active-shadow-dark);
+        }
+
+        .right-panel {
+            position: absolute;
+            left: 50%;
+            margin-left: 220px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            width: 200px;
+            opacity: 0;
+            visibility: hidden;
+            transform: translateX(-20px);
+            transition: all 0.4s ease;
+        }
+
+        .layout-container.timer-active .right-panel {
+            opacity: 1;
+            visibility: visible;
+            transform: translateX(0);
+        }
+
+        .add-time-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid rgba(0,0,0,0.05);
+        }
+        
+        body.dark .add-time-grid {
+            border-bottom: 2px solid rgba(255,255,255,0.05);
+        }
+        
+        .right-panel .btn.small {
+            padding: 10px 0;
+            font-size: 0.9rem;
+        }
+
+        .action-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+        
+        .sound-group {
+            margin-top: 5px;
+            border-top: 2px solid rgba(0,0,0,0.05);
+            padding-top: 15px;
+        }
+        body.dark .sound-group {
+            border-top: 2px solid rgba(255,255,255,0.05);
+        }
+
+        .dark-mode-toggle {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            font-size: 0.8rem;
+            padding: 8px 15px;
+            opacity: 0.8;
+            z-index: 100;
+        }
+
+        @media (max-width: 850px) {
+            body { overflow-y: auto; padding: 40px 0; }
+            .layout-container { flex-direction: column; }
+            .right-panel {
+                position: relative;
+                left: auto;
+                margin-left: 0;
+                margin-top: 30px;
+                width: 100%;
+                max-width: 350px;
+                transform: translateY(-20px);
+            }
+            .layout-container.timer-active .right-panel {
+                transform: translateY(0);
+            }
+            .add-time-grid {
+                grid-template-columns: 1fr 1fr 1fr 1fr;
+            }
+        }
+
+        .toggle-history-btn { padding: 12px 25px; border-radius: 20px; background: var(--clock-bg); color: var(--secondary-color); font-weight: 600; cursor: pointer; box-shadow: var(--shadow-light), var(--shadow-dark); transition: 0.2s; border: none; font-size: 1rem; text-align: center; user-select: none; touch-action: manipulation; }
+        .toggle-history-btn:hover { transform: scale(1.02); }
+
+        /* Common Modal Styles */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0, 0, 0, 0.5); z-index: 200;
+            display: none; align-items: center; justify-content: center;
+        }
+        .modal-overlay.show { display: flex; }
+        .modal-content {
+            background: var(--clock-bg); width: 90%; max-width: 500px;
+            padding: 25px; border-radius: 25px;
+            box-shadow: var(--shadow-light), var(--shadow-dark);
+            text-align: center;
+            max-height: 80vh; overflow-y: auto;
+        }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; color: var(--secondary-color); }
+        .modal-title { font-size: 1.1rem; font-weight: 700; color: var(--secondary-color); }
+        .close-btn { background: none; border: none; font-size: 1.5em; cursor: pointer; color: var(--secondary-color); opacity: 0.7; transition: 0.2s; }
+        
+        /* Alarm Modal Specific */
+        .alarm-message { font-size: 1.2rem; margin: 20px 0; color: var(--secondary-color); font-weight: 600; }
+        .alarm-confirm-btn { 
+            background: var(--timer-red); color: white; border: none; padding: 15px 40px; 
+            border-radius: 30px; font-size: 1.2rem; font-weight: bold; cursor: pointer;
+            box-shadow: 0 5px 15px rgba(231, 76, 60, 0.4);
+            transition: transform 0.2s;
+        }
+        .alarm-confirm-btn:active { transform: scale(0.95); }
+
+        /* History Table Styles */
+        .detail-table, .history-table { width: 100%; border-collapse: collapse; font-size: 1rem; color: var(--secondary-color); }
+        .detail-table th, .history-table th { background: var(--clock-bg); padding: 10px; box-shadow: inset 0 -1px 0 rgba(0,0,0,0.1); }
+        body.dark .detail-table th, body.dark .history-table th { box-shadow: inset 0 -1px 0 rgba(255,255,255,0.1); }
+        .detail-table td, .history-table td { padding: 10px; border-bottom: 1px solid rgba(0,0,0,0.1); }
+        body.dark .detail-table td, body.dark .history-table td { border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .date-link { color: var(--timer-red); font-weight: 600; text-decoration: underline; cursor: pointer; }
+
+    </style>
+</head>
+<body>
+
+    <button class="btn dark-mode-toggle" id="btnDarkMode" aria-label="다크모드 전환">Dark Mode</button>
+
+    <div class="layout-container" id="layoutContainer">
+        
+        <div class="center-column">
+            <div class="clock" id="clock">
+                <div class="ticks" id="ticks"></div>
+                <div class="clock-labels">
+                    <label style="--i:1"><span class="num">1</span></label>
+                    <label style="--i:2"><span class="num">2</span></label>
+                    <label style="--i:3"><span class="num">3</span></label>
+                    <label style="--i:4"><span class="num">4</span></label>
+                    <label style="--i:5"><span class="num">5</span></label>
+                    <label style="--i:6"><span class="num">6</span></label>
+                    <label style="--i:7"><span class="num">7</span></label>
+                    <label style="--i:8"><span class="num">8</span></label>
+                    <label style="--i:9"><span class="num">9</span></label>
+                    <label style="--i:10"><span class="num">10</span></label>
+                    <label style="--i:11"><span class="num">11</span></label>
+                    <label style="--i:12"><span class="num">12</span></label>
+                </div>
+                <div class="timer-disk" id="timerDisk"></div>
+                <div class="indicator">
+                    <span class="hand hour"></span>
+                    <span class="hand minute"></span>
+                    <span class="hand second"></span>
+                </div>
+            </div>
+
+            <div class="mode-group">
+                <button class="btn active-state" id="btnClockMode">Clock Mode</button>
+                <button class="btn" id="btnTimerMode">Time Timer</button>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="add-time-grid">
+                <button class="btn small" onclick="addTime(1)">+1분</button>
+                <button class="btn small" onclick="addTime(5)">+5분</button>
+                <button class="btn small" onclick="addTime(10)">+10분</button>
+                <button class="btn small" onclick="addTime(30)">+30분</button>
+            </div>
+            
+            <div class="action-group">
+                <button class="btn" id="startBtn">시작</button>
+                <button class="btn" id="pauseBtn">일시정지</button>
+                <button class="btn" id="stopBtn">정지</button>
+                <button class="btn" id="resetBtn">초기화</button>
+            </div>
+
+            <div class="sound-group">
+                <button class="btn active-state" id="btnSoundToggle" style="width: 100%">소리 : ON</button>
+            </div>
+
+            <button class="btn toggle-history-btn" onclick="showHistoryModal()">📜 사용 기록 보기</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="alarmModal" style="z-index: 300;">
+        <div class="modal-content">
+            <h2 class="alarm-message">⏰ 시간이 종료되었습니다!</h2>
+            <p style="margin-bottom: 20px; color: var(--secondary-color);">알람을 종료하려면 버튼을 누르세요.</p>
+            <button class="alarm-confirm-btn" onclick="confirmAlarmEnd()">확인 (알람 끄기)</button>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="historyModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <span class="modal-title">📅 사용 기록 (DB)</span>
+                <button class="close-btn" onclick="closeHistoryModal()">×</button>
+            </div>
+            <div class="db-section">
+                <div class="db-header">
+                    <button class="btn download-btn" onclick="downloadCSV()">💾 기록 내보내기</button>
+                </div>
+                <table class="history-table">
+                    <thead><tr><th>날짜</th><th>총 시간</th><th>횟수</th></tr></thead>
+                    <tbody id="historyBody"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="detailModal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">
+                <span class="modal-title" id="modalTitle">상세 내역</span>
+                <button class="close-btn" onclick="closeModal()">×</button>
+            </div>
+            <div id="modalBody"></div>
+        </div>
+    </div>
+
+    <script>
+        // DOM Elements
+        const body = document.body;
+        const layoutContainer = document.getElementById("layoutContainer");
+        const clock = document.getElementById("clock");
+        const ticks = document.getElementById("ticks");
+        const timerDisk = document.getElementById("timerDisk");
+        const btnClockMode = document.getElementById("btnClockMode");
+        const btnTimerMode = document.getElementById("btnTimerMode");
+        const btnDarkMode = document.getElementById("btnDarkMode");
+        const startBtn = document.getElementById("startBtn");
+        const pauseBtn = document.getElementById("pauseBtn");
+        const stopBtn = document.getElementById("stopBtn");
+        const resetBtn = document.getElementById("resetBtn");
+        const btnSoundToggle = document.getElementById("btnSoundToggle");
+        const hourHand = document.querySelector(".hour");
+        const minuteHand = document.querySelector(".minute");
+        const secondHand = document.querySelector(".second");
+        const numbers = document.querySelectorAll(".num");
+        
+        // Modals
+        const alarmModal = document.getElementById("alarmModal");
+        const historyModal = document.getElementById("historyModal");
+        const detailModal = document.getElementById("detailModal");
+        const historyBody = document.getElementById("historyBody");
+        const modalTitle = document.getElementById("modalTitle");
+        const modalBody = document.getElementById("modalBody");
+
+        // State Variables
+        let isTimerMode = false;
+        let timerInterval = null;
+        let remainingSeconds = 0;
+        let elapsedSeconds = 0;
+        let sessionStartTime = null;
+        let isTimerRunning = false;
+        let isPaused = false;
+        let isSoundOn = true;
+        
+        // Audio & Alarm State
+        let audioCtx = null;
+        let alarmInterval = null;
+        let currentOscillator = null;
+
+        const clockNumbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+        const timerNumbers = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60];
+
+        // --- Audio Logic ---
+        const initAudio = () => {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            if (audioCtx.state === 'suspended') audioCtx.resume();
+        };
+
+        const playBeep = () => {
+            if (!isSoundOn || !audioCtx) return;
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            
+            osc.type = 'sine';
+            const now = audioCtx.currentTime;
+            
+            // Frequency Sweep
+            osc.frequency.setValueAtTime(880, now);
+            osc.frequency.exponentialRampToValueAtTime(440, now + 0.5);
+            
+            // Volume Envelope
+            gain.gain.setValueAtTime(0.3, now);
+            gain.gain.exponentialRampToValueAtTime(0.01, now + 0.5);
+            
+            osc.start(now);
+            osc.stop(now + 0.5);
+            currentOscillator = osc;
+        };
+
+        const startAlarmLoop = () => {
+            if (!isSoundOn) return;
+            initAudio();
+            playBeep(); 
+            if (alarmInterval) clearInterval(alarmInterval);
+            alarmInterval = setInterval(playBeep, 600);
+        };
+
+        const stopAlarmLoop = () => {
+            if (alarmInterval) {
+                clearInterval(alarmInterval);
+                alarmInterval = null;
+            }
+            if (currentOscillator) {
+                try { currentOscillator.stop(); } catch(e){}
+                currentOscillator = null;
+            }
+        };
+
+        // --- Logic Flow ---
+
+        const tick = () => {
+            if (remainingSeconds > 0) {
+                remainingSeconds--;
+                elapsedSeconds++;
+                drawTimer();
+            } else {
+                // Time is up!
+                clearInterval(timerInterval);
+                timerInterval = null;
+                drawTimer(); 
+
+                // 1. Start Audio Loop
+                startAlarmLoop();
+
+                // 2. Show Custom Alarm Modal
+                alarmModal.classList.add('show');
+            }
+        };
+
+        // Called when user clicks "Confirm" on the custom alarm modal
+        window.confirmAlarmEnd = () => {
+            // 1. Stop Audio
+            stopAlarmLoop();
+            
+            // 2. Hide Alarm Modal
+            alarmModal.classList.remove('show');
+
+            // 3. Process Data (Activity Log)
+            setTimeout(() => {
+                const endTime = new Date();
+                const startT = sessionStartTime || new Date();
+                const timeRangeStr = `${formatTimeStr(startT)} ~ ${formatTimeStr(endTime)}`;
+                
+                let taskName = prompt("지금은 어떤 활동을 하셨나요?", "");
+                if (taskName === null) taskName = "";
+                
+                saveTodayStats(elapsedSeconds, taskName, timeRangeStr);
+                
+                // 4. Reset Timer UI
+                stopTimerLogic();
+
+                // 5. NO AUTO POPUP OF HISTORY (Removed as requested)
+            }, 100);
+        };
+
+        const stopTimerLogic = () => {
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = null;
+            isTimerRunning = false;
+            isPaused = false;
+            startBtn.innerText = "시작";
+            startBtn.classList.remove("active-state");
+            pauseBtn.classList.remove("active-state");
+            remainingSeconds = 0;
+            elapsedSeconds = 0;
+            sessionStartTime = null;
+            drawTimer();
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            stopBtn.disabled = true;
+            resetBtn.disabled = true;
+        };
+
+        // Manual Stop
+        const stopTimerManual = () => {
+            if (!isTimerRunning && !isPaused) return;
+            
+            if(confirm("타이머를 정지하고 기록하시겠습니까?")) {
+                const endTime = new Date();
+                const startT = sessionStartTime || new Date();
+                const timeRangeStr = `${formatTimeStr(startT)} ~ ${formatTimeStr(endTime)}`;
+                
+                let taskName = prompt("지금은 어떤 활동을 하셨나요?", "");
+                if (taskName === null) taskName = "";
+                
+                saveTodayStats(elapsedSeconds, taskName, timeRangeStr);
+                stopTimerLogic();
+                // No auto history popup
+            }
+        };
+
+        // --- Standard UI Functions ---
+
+        function createGraduations() {
+            ticks.innerHTML = "";
+            for (let i = 0; i < 60; i++) {
+                const tick = document.createElement("div");
+                tick.classList.add("tick");
+                if (i % 5 === 0) tick.classList.add("major");
+                tick.style.transform = `translateX(-50%) rotate(${i * 6}deg)`;
+                ticks.appendChild(tick);
+            }
+        }
+        createGraduations();
+
+        if (localStorage.getItem("mode") === "dark") {
+            body.classList.add("dark");
+            btnDarkMode.innerText = "Light Mode";
+        }
+
+        btnDarkMode.addEventListener("click", () => {
+            body.classList.toggle("dark");
+            const isDark = body.classList.contains("dark");
+            btnDarkMode.innerText = isDark ? "Light Mode" : "Dark Mode";
+            localStorage.setItem("mode", isDark ? "dark" : "light");
+        });
+
+        const updateNumbers = (isTimer) => {
+            const nums = isTimer ? timerNumbers : clockNumbers;
+            numbers.forEach((span, i) => span.innerText = nums[i]);
+        };
+
+        const updateClock = () => {
+            if (isTimerMode) return;
+            const date = new Date();
+            const sec = date.getSeconds() + date.getMilliseconds() / 1000;
+            const min = date.getMinutes() + sec / 60;
+            const hr = date.getHours() % 12 + min / 60;
+            secondHand.style.transform = `rotate(${sec * 6}deg)`;
+            minuteHand.style.transform = `rotate(${min * 6}deg)`;
+            hourHand.style.transform = `rotate(${hr * 30}deg)`;
+        };
+        setInterval(updateClock, 100);
+        updateClock();
+
+        const drawTimer = () => {
+            const degrees = (remainingSeconds / 3600) * 360;
+            timerDisk.style.background = `conic-gradient(var(--timer-red) ${degrees}deg, transparent ${degrees}deg)`;
+            clock.classList.toggle('zero-time', remainingSeconds === 0);
+        };
+
+        window.addTime = (minutes) => {
+            initAudio();
+            let newTime = remainingSeconds + (minutes * 60);
+            if (newTime > 3600) newTime = 3600;
+            remainingSeconds = newTime;
+            drawTimer();
+        };
+
+        // Event Listeners
+        btnSoundToggle.addEventListener("click", () => {
+            isSoundOn = !isSoundOn;
+            btnSoundToggle.innerText = `소리 : ${isSoundOn ? 'ON' : 'OFF'}`;
+            btnSoundToggle.classList.toggle("active-state", isSoundOn);
+            btnSoundToggle.classList.toggle("sound-off", !isSoundOn);
+        });
+
+        btnClockMode.addEventListener("click", () => {
+            isTimerMode = false;
+            clock.classList.remove("timer-mode");
+            layoutContainer.classList.remove("timer-active");
+            btnClockMode.classList.add("active-state");
+            btnTimerMode.classList.remove("active-state");
+            updateNumbers(false);
+            stopTimerLogic();
+            updateClock();
+        });
+
+        btnTimerMode.addEventListener("click", () => {
+            isTimerMode = true;
+            clock.classList.add("timer-mode");
+            layoutContainer.classList.add("timer-active");
+            btnTimerMode.classList.add("active-state");
+            btnClockMode.classList.remove("active-state");
+            updateNumbers(true);
+            remainingSeconds = 0;
+            elapsedSeconds = 0;
+            sessionStartTime = null;
+            drawTimer();
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+            stopBtn.disabled = true;
+            resetBtn.disabled = true;
+        });
+
+        startBtn.addEventListener("click", () => {
+            if (isTimerRunning || remainingSeconds <= 0) return;
+            initAudio();
+            isTimerRunning = true;
+            isPaused = false;
+            sessionStartTime = new Date();
+            timerInterval = setInterval(tick, 1000);
+            startBtn.classList.add("active-state");
+            pauseBtn.classList.remove("active-state");
+            startBtn.disabled = true;
+            pauseBtn.disabled = false;
+            stopBtn.disabled = false;
+            resetBtn.disabled = false;
+        });
+
+        pauseBtn.addEventListener("click", () => {
+            if (!isTimerRunning) return;
+            clearInterval(timerInterval);
+            timerInterval = null;
+            isTimerRunning = false;
+            isPaused = true;
+            startBtn.innerText = "재시작";
+            startBtn.classList.remove("active-state");
+            pauseBtn.classList.add("active-state");
+            startBtn.disabled = false;
+            pauseBtn.disabled = true;
+        });
+
+        stopBtn.addEventListener("click", stopTimerManual);
+        resetBtn.addEventListener("click", () => {
+            stopTimerLogic();
+            drawTimer();
+        });
+
+        // --- History & DB Functions ---
+
+        function formatTotalTime(seconds) {
+            if (seconds < 60) return `${seconds}초`;
+            const mins = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${mins}분 ${secs}초`;
+        }
+        function formatTimeStr(date) {
+            if(!date) return "";
+            let hours = date.getHours();
+            let minutes = date.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12 || 12;
+            minutes = minutes < 10 ? '0' + minutes : minutes;
+            return `${ampm} ${hours}:${minutes}`;
+        }
+        function saveTodayStats(secondsUsed, taskName, timeRange) {
+            try {
+                const today = new Date().toISOString().split('T')[0];
+                let data = { totalSeconds: 0, sessions: 0, logs: [] };
+                const result = localStorage.getItem(`timer-${today}`);
+                if (result) {
+                    data = JSON.parse(result);
+                    if (!data.logs) data.logs = [];
+                }
+                data.totalSeconds += secondsUsed;
+                data.sessions += 1;
+                data.logs.push({ time: secondsUsed, task: taskName.trim(), range: timeRange });
+                localStorage.setItem(`timer-${today}`, JSON.stringify(data));
+            } catch (error) { console.error('저장 실패:', error); }
+        }
+        function showHistoryModal() {
+            loadHistory();
+            historyModal.classList.add('show');
+        }
+        function closeHistoryModal() {
+            historyModal.classList.remove('show');
+        }
+        function loadHistory() {
+            const historyData = [];
+            for(let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if(key.startsWith('timer-')) {
+                    const date = key.replace('timer-', '');
+                    const data = JSON.parse(localStorage.getItem(key));
+                    historyData.push({ date: date, ...data });
+                }
+            }
+            historyData.sort((a, b) => new Date(b.date) - new Date(a.date));
+            historyBody.innerHTML = '';
+            if (historyData.length === 0) {
+                historyBody.innerHTML = '<tr><td colspan="3">아직 기록이 없습니다.</td></tr>';
+                return;
+            }
+            historyData.forEach(item => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td class="date-link" onclick="showDetail('${item.date}')">${item.date} 🔍</td>
+                    <td>${formatTotalTime(item.totalSeconds)}</td>
+                    <td>${item.sessions}회</td>
+                `;
+                historyBody.appendChild(row);
+            });
+        }
+        function showDetail(date) {
+            closeHistoryModal(); 
+            const result = localStorage.getItem(`timer-${date}`);
+            if(!result) return;
+            const data = JSON.parse(result);
+            modalTitle.textContent = `${date} 상세 기록`;
+            const logs = data.logs || []; 
+            if (logs.length === 0) {
+                modalBody.innerHTML = "<p>상세 기록이 없습니다</p>";
+            } else {
+                let html = `<table class="detail-table"><thead><tr><th width="15%">회차</th><th width="35%">기록 시간</th><th width="20%">소요</th><th width="30%">활동 내용</th></tr></thead><tbody>`;
+                logs.forEach((log, index) => {
+                    const rangeDisplay = log.range ? log.range : "-";
+                    html += `<tr><td>${index + 1}회차</td><td class="time-range-cell">${rangeDisplay}</td><td>${formatTotalTime(log.time)}</td><td>${log.task || '-'}</td></tr>`;
+                });
+                html += `</tbody></table>`;
+                modalBody.innerHTML = html;
+            }
+            detailModal.classList.add('show');
+        }
+        function closeModal() { detailModal.classList.remove('show'); }
+        function downloadCSV() {
+            let csvContent = "data:text/csv;charset=utf-8,\uFEFF날짜,총 사용 시간,세션 수,상세 내역(내용[시간])\n";
+            const historyData = [];
+            for(let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if(key.startsWith('timer-')) {
+                    const date = key.replace('timer-', '');
+                    const data = JSON.parse(localStorage.getItem(key));
+                    historyData.push({ date: date, ...data });
+                }
+            }
+            historyData.sort((a, b) => new Date(a.date) - new Date(b.date));
+            if (historyData.length === 0) { alert("저장된 기록이 없습니다."); return; }
+            historyData.forEach(row => {
+                let details = "";
+                if(row.logs && row.logs.length > 0) {
+                    details = row.logs.map(l => {
+                        const rangeStr = l.range ? `(${l.range})` : "";
+                        return `[${l.task || '무제'}${rangeStr}: ${formatTotalTime(l.time)}]`;
+                    }).join(" ");
+                }
+                csvContent += `${row.date},${row.totalSeconds},${row.sessions},"${details}"\n`;
+            });
+            const encodedUri = encodeURI(csvContent);
+            const link = document.createElement("a");
+            link.setAttribute("href", encodedUri);
+            link.setAttribute("download", "타임타이머_기록.csv");
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+        // Modal close events
+        historyModal.addEventListener('click', (e) => { if(e.target === historyModal) closeHistoryModal(); });
+        detailModal.addEventListener('click', (e) => { if(e.target === detailModal) closeModal(); });
+
+    </script>
+</body>
+</html>
