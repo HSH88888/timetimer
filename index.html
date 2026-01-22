@@ -625,7 +625,7 @@
         }
         createGraduations();
 
-        if (localStorage.getItem("mode") === "light") {
+        if (localStorage.getItem("mode") !== "Light") {
             body.classList.add("dark");
             btnDarkMode.innerText = "Light Mode";
         }
@@ -865,3 +865,4 @@
 </body>
 
 </html>
+
